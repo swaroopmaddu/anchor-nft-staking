@@ -7,3 +7,10 @@ node_modules
 test-ledger
 yarn.lock
 package-lock.json
+
+app/node_modules
+app/.next/
+app/.env.local
+app/tokens/.env.local
+
+*.log
