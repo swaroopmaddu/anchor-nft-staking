@@ -4,6 +4,7 @@ import { AnchorNftStaking } from "../target/types/anchor_nft_staking";
 import { setupNft } from "./helpers/setup_nft";
 import { PROGRAM_ID as METADATA_PROGRAM_ID } from '@metaplex-foundation/mpl-token-metadata';
 import { expect } from "chai";
+import { getAccount } from "@solana/spl-token";
 
 describe("anchor-nft-staking", () => {
   // Configure the client to use the local cluster.
@@ -40,5 +41,38 @@ describe("anchor-nft-staking", () => {
     
     const account = await program.account.userStakeInfo.fetch(stakeStatePda);
     expect(account.stakeState === "Staked");
+  });
+
+  it("Redeems", async () => {
+    const tx = await program.methods
+      .redeem()
+      .accounts({
+        nftTokenAccount: nft.tokenAddress,
+        stakeMint: mint,
+        userStakeAta: tokenAddress,
+      })
+      .rpc();
+
+    const account = await program.account.userStakeInfo.fetch(stakeStatePda);
+    expect(account.stakeState === "Staked");
+    const tokenAccount = await getAccount(provider.connection, tokenAddress);
+    console.log(tokenAccount.amount);
+  });
+
+  it("Unstake", async () => {
+    const tx = await program.methods
+      .unstake()
+      .accounts({
+        nftTokenAccount: nft.tokenAddress,
+        nftMint: nft.mintAddress,
+        nftEdition: nft.masterEditionAddress,
+        metadataProgram: METADATA_PROGRAM_ID,
+        stakeMint: mint,
+        userStakeAta: tokenAddress,
+      })
+      .rpc();
+    
+    const account = await program.account.userStakeInfo.fetch(stakeStatePda);
+    expect(account.stakeState === "Unstaked");
   });
 });
