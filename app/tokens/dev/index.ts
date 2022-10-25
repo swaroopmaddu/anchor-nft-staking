@@ -17,7 +17,7 @@ import * as fs from "fs";
 const TOKEN_NAME="DEV Coin";
 const TOKEN_SYMBOL="DEV";
 const TOKEN_DESCRIPTION = "DEV Coin is a token for the Solana Buildoors project";
-const TOKEN_DECIMALS=9;
+const TOKEN_DECIMALS=2;
 const TOKEN_IMAGE="tokens/dev/assets/icon.jpg";
 const TOKEN_IMAGE_NAME = "icon.jpg";
 

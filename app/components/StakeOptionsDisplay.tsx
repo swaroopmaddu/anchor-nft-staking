@@ -176,6 +176,7 @@ export const StakeOptinsDisplay = ({
     transaction.add(unstakeIx);
 
     await sendAndConfirmTransaction(transaction);
+    await checkStakingStatus();
     setLoading(false);
   }, [walletAdapter, connection, nftData, nftTokenAccount]);
 
