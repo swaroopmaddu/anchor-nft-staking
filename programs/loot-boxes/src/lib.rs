@@ -13,7 +13,7 @@ pub mod loot_boxes {
     use super::*;
 
     pub fn open_lootbox(ctx: Context<OpenLootbox>, user_points_to_burn: u64) -> Result<()> {
-        //require!( !ctx.accounts.lootbox_pointer.is_initialized || ctx.accounts.lootbox_pointer.is_claimed, LootboxErrors::LootboxAlreadyClaimed );
+        require!( !ctx.accounts.lootbox_pointer.is_initialized || ctx.accounts.lootbox_pointer.is_claimed, LootboxErrors::LootboxAlreadyClaimed );
 
         let mut points = 10;
 
