@@ -13,10 +13,7 @@ pub mod loot_boxes {
     use super::*;
 
     pub fn open_lootbox(ctx: Context<OpenLootbox>, user_points_to_burn: u64) -> Result<()> {
-        require!(
-            !ctx.accounts.lootbox_pointer.is_initialized || ctx.accounts.lootbox_pointer.is_claimed,
-            LootboxErrors::LootboxAlreadyClaimed
-        );
+        //require!( !ctx.accounts.lootbox_pointer.is_initialized || ctx.accounts.lootbox_pointer.is_claimed, LootboxErrors::LootboxAlreadyClaimed );
 
         let mut points = 10;
 
@@ -52,11 +49,11 @@ pub mod loot_boxes {
         msg!("DEV tokens burned");
 
         let available_gear: Vec<Pubkey> = vec![
-            "7r3N2efftaJ296mZHiaxcscCLg2Bc5Z9nU4pF6dB5MvL" .parse::<Pubkey>() .unwrap(),
-            "GJUCFjFcReiZWTUs1vP3tFtc6njKZF3wiVAZ6mpRJyGs" .parse::<Pubkey>() .unwrap(),
-            "2W1uV6sPK9LxgoRTZcPeSynbDuhnyPgTFJQkz8VirDKF" .parse::<Pubkey>() .unwrap(),
-            "7ZqPjhkVHLdzspsxFnGvD7P94oQJqwJognkCyWYJtmME" .parse::<Pubkey>() .unwrap(),
-            "GMomWkz7HB5e3g7Pn5PySUWJq7nLfe2tCunetDvG7SZu" .parse::<Pubkey>() .unwrap(),
+            "CudtPyZYtPrwJufP6k7gAzPYfV12CLdpu4MHXfLSig9" .parse::<Pubkey>() .unwrap(),
+            "E6cg8XYnor3g58o2qP7N2DHV9JNDJgwpNDAh7QrSw72w" .parse::<Pubkey>() .unwrap(),
+            "CeMJNozciBS8Ke9Y7saYbJeeaq2vSoEptgXSvoMBq1Q3" .parse::<Pubkey>() .unwrap(),
+            "H6fpRxytdX6MpBAffyxMitsqoyhHqE71SwNPsEvt1oQ2" .parse::<Pubkey>() .unwrap(),
+            "Hpvp9ZuFnK1E5aBxVM3thGqsybGNBTf6ucXT2ZEX7EPr" .parse::<Pubkey>() .unwrap(),
         ];
 
         let clock = Clock::get()?;
@@ -158,7 +155,7 @@ pub struct ClaimLootbox<'info> {
         associated_token::authority = user,
     )]
     pub user_gear_ata: Account<'info, TokenAccount>,
-    /// CHECK Mint authority
+    /// CHECK: Mint authority
     #[account(
         seeds = ["mint".as_bytes()],
         bump,
@@ -170,16 +167,7 @@ pub struct ClaimLootbox<'info> {
     pub rent: Sysvar<'info, Rent>,
 }
 
-#[derive(Clone)]
-pub struct StakingProgram;
 
-impl anchor_lang::Id for StakingProgram {
-    fn id() -> Pubkey {
-        "AxJjgFUbaQn8ypKgRy56EKco2cQ95oGEN7oJUdo7VCUY"
-            .parse::<Pubkey>()
-            .unwrap()
-    }
-}
 
 #[account]
 pub struct LootboxPointer {

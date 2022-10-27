@@ -114,8 +114,43 @@ describe("anchor-nft-staking", () => {
       lootboxProgram.programId
     );
     const pointer = await lootboxProgram.account.lootboxPointer.fetch(address);
-    expect(pointer.mint.toBase58());
+
+    expect(pointer.isInitialized == true);
+    expect(pointer.isClaimed == false);
 
   })
+
+
+  it("Claim the selected gear", async () => {
+    
+    const [lootboxPointerAddress] =
+      anchor.web3.PublicKey.findProgramAddressSync(
+        [Buffer.from("lootbox"), wallet.publicKey.toBuffer()],
+        lootboxProgram.programId
+      );
+
+    const pointer = await lootboxProgram.account.lootboxPointer.fetch(
+      lootboxPointerAddress
+    );
+    console.log(pointer.mint.toBase58());
+    
+    const gearAta = await getAssociatedTokenAddress(
+      pointer.mint,
+      wallet.publicKey
+    );
+    console.log(gearAta.toBase58())
+
+    await lootboxProgram.methods
+      .claimLootbox()
+      .accounts({
+        lootboxPointer: lootboxPointerAddress,
+        gearMint: pointer.mint,
+        userGearAta: gearAta,
+      })
+      .rpc();
+
+    const gearAccount = await getAccount(provider.connection, gearAta);
+    expect(Number(gearAccount.amount)).to.equal(1);
+  });
 
 });
