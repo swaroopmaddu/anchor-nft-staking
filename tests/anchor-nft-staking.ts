@@ -11,8 +11,15 @@ import {
   getAccount,
   createMint,
   mintToChecked,
-} from "@solana/spl-token";
+} from "@solana/spl-token-real";
 import { BN } from "bn.js";
+import {
+  promiseWithTimeout,
+  SwitchboardTestContext,
+} from "@switchboard-xyz/sbv2-utils";
+import * as sbv2 from "@switchboard-xyz/switchboard-v2";
+import setupSwitchboard from './helpers/setup_switchboard';
+
 
 describe("anchor-nft-staking", () => {
   // Configure the client to use the local cluster.
@@ -24,17 +31,37 @@ describe("anchor-nft-staking", () => {
   const program = anchor.workspace.AnchorNftStaking as Program<AnchorNftStaking>;
   const lootboxProgram = anchor.workspace.LootBoxes as Program<LootBoxes>;
 
-  let delegatedAuthPda: anchor.web3.PublicKey;
   let stakeStatePda: anchor.web3.PublicKey;
   let nft: any;
-  let mintAuth: anchor.web3.PublicKey;
   let mint: anchor.web3.PublicKey;
   let tokenAddress: anchor.web3.PublicKey;
 
 
+  let switchboard: SwitchboardTestContext;
+  let userState: anchor.web3.PublicKey;
+  let lootboxPointerPda: anchor.web3.PublicKey;
+  let permissionBump: number;
+  let switchboardStateBump: number;
+  let vrfAccount: sbv2.VrfAccount;
+  let switchboardStateAccount: sbv2.ProgramStateAccount;
+  let permissionAccount: sbv2.PermissionAccount;
+  
+
   before(async () => {
-    ({ nft, delegatedAuthPda, stakeStatePda, mint, mintAuth, tokenAddress } =
-      await setupNft(program, wallet.payer));
+      ({ nft, stakeStatePda, mint, tokenAddress } = await setupNft(
+        program,
+        wallet.payer
+      ));
+      ({
+          switchboard,
+          lootboxPointerPda,
+          permissionBump,
+          switchboardStateBump,
+          vrfAccount,
+          switchboardStateAccount,
+          permissionAccount,
+        } = await setupSwitchboard(provider, lootboxProgram, wallet.payer)
+      );
   });
 
   it("Stake", async () => {
@@ -93,6 +120,22 @@ describe("anchor-nft-staking", () => {
     console.log(tokenAccount.amount);
   });
 
+    it("init user", async () => {
+      const tx = await lootboxProgram.methods
+        .initUser({
+          switchboardStateBump: switchboardStateBump,
+          vrfPermissionBump: permissionBump,
+        })
+        .accounts({
+          state: userState,
+          vrf: vrfAccount.publicKey,
+          payer: wallet.pubkey,
+          systemProgram: anchor.web3.SystemProgram.programId,
+        })
+        .rpc();
+    });
+
+    
   it("Chooses a random lootbox",async () => {
 
     const [stakeAccount] = anchor.web3.PublicKey.findProgramAddressSync(
@@ -100,14 +143,36 @@ describe("anchor-nft-staking", () => {
       program.programId
     );
 
+    const vrfState = await vrfAccount.loadData();
+    const { authority, dataBuffer } = await switchboard.queue.loadData();
+
     await lootboxProgram.methods
       .openLootbox(new BN(10))
       .accounts({
+        user: wallet.publicKey,
         stakeMint: mint,
-        userStakeAta: tokenAddress,
+        stakeMintAta: tokenAddress,
         stakeState: stakeAccount,
+        state: userState,
+        vrf: vrfAccount.publicKey,
+        oracleQueue: switchboard.queue.publicKey,
+        queueAuthority: authority,
+        dataBuffer: dataBuffer,
+        permission: permissionAccount.publicKey,
+        escrow: vrfState.escrow,
+        programState: switchboardStateAccount.publicKey,
+        switchboardProgram: switchboard.program.programId,
+        payerWallet: switchboard.payerTokenWallet,
+        recentBlockhashes: anchor.web3.SYSVAR_RECENT_BLOCKHASHES_PUBKEY,
       })
       .rpc();
+
+    await awaitCallback(
+      lootboxProgram,
+      lootboxPointerPda,
+      20_000,
+      "Didn't get random mint"
+    );
 
     const [address] = anchor.web3.PublicKey.findProgramAddressSync(
       [Buffer.from("lootbox"), wallet.publicKey.toBuffer()],
@@ -116,41 +181,83 @@ describe("anchor-nft-staking", () => {
     const pointer = await lootboxProgram.account.lootboxPointer.fetch(address);
 
     expect(pointer.isInitialized == true);
-    expect(pointer.isClaimed == false);
+    expect(pointer.redeemable == true);
 
   })
 
-
-  it("Claim the selected gear", async () => {
+   it("Mints the selected gear", async () => {
     
-    const [lootboxPointerAddress] =
-      anchor.web3.PublicKey.findProgramAddressSync(
-        [Buffer.from("lootbox"), wallet.publicKey.toBuffer()],
-        lootboxProgram.programId
-      );
+     const [pointerAddress] = anchor.web3.PublicKey.findProgramAddressSync(
+       [Buffer.from("lootbox"), wallet.publicKey.toBuffer()],
+       lootboxProgram.programId
+     );
 
-    const pointer = await lootboxProgram.account.lootboxPointer.fetch(
-      lootboxPointerAddress
-    );
-    console.log(pointer.mint.toBase58());
-    
-    const gearAta = await getAssociatedTokenAddress(
-      pointer.mint,
-      wallet.publicKey
-    );
-    console.log(gearAta.toBase58())
+     const pointer = await lootboxProgram.account.lootboxPointer.fetch(
+       pointerAddress
+     );
 
-    await lootboxProgram.methods
-      .claimLootbox()
-      .accounts({
-        lootboxPointer: lootboxPointerAddress,
-        gearMint: pointer.mint,
-        userGearAta: gearAta,
-      })
-      .rpc();
+     let previousGearCount = 0;
+     const gearAta = await getAssociatedTokenAddress(
+       pointer.mint,
+       wallet.publicKey
+     );
+     try {
+       let gearAccount = await getAccount(provider.connection, gearAta);
+       previousGearCount = Number(gearAccount.amount);
+     } catch (error) {}
 
-    const gearAccount = await getAccount(provider.connection, gearAta);
-    expect(Number(gearAccount.amount)).to.equal(1);
-  });
+     await lootboxProgram.methods
+       .retrieveItemFromLootbox()
+       .accounts({
+         mint: pointer.mint,
+         userGearAta: gearAta,
+       })
+       .rpc();
+
+     const gearAccount = await getAccount(provider.connection, gearAta);
+     expect(Number(gearAccount.amount)).to.equal(previousGearCount + 1);
+   });
 
 });
+
+async function awaitCallback(
+  program: Program<LootBoxes>,
+  lootboxPointerAddress: anchor.web3.PublicKey,
+  timeoutInterval: number,
+  errorMsg = "Timed out waiting for VRF Client callback"
+) {
+  let ws: number | undefined = undefined;
+  const result: boolean = await promiseWithTimeout(
+    timeoutInterval,
+    new Promise((resolve: (result: boolean) => void) => {
+      ws = program.provider.connection.onAccountChange(
+        lootboxPointerAddress,
+        async (
+          accountInfo: anchor.web3.AccountInfo<Buffer>,
+          context: anchor.web3.Context
+        ) => {
+          const lootboxPointer = await program.account.lootboxPointer.fetch(
+            lootboxPointerAddress
+          );
+
+          if (lootboxPointer.redeemable) {
+            resolve(true);
+          }
+        }
+      );
+    }).finally(async () => {
+      if (ws) {
+        await program.provider.connection.removeAccountChangeListener(ws);
+      }
+      ws = undefined;
+    }),
+    new Error(errorMsg)
+  ).finally(async () => {
+    if (ws) {
+      await program.provider.connection.removeAccountChangeListener(ws);
+    }
+    ws = undefined;
+  });
+
+  return result;
+}
